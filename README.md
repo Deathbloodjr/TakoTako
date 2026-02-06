@@ -9,6 +9,9 @@ Currently has the features:
 - Override songs names to a certain language than the default one
 - Allows use of the Hori Taiko Drum
 
+For Deathblood's fork:\
+I mostly just plan on adjusting this mod to work with my new SaveProfileManager.
+
 ---
 ## Supported Versions
 <details>

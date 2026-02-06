@@ -339,11 +339,11 @@ public class CustomMusicLoaderPatch
             var files = Directory
                 .EnumerateFiles(pluginDirectory)
                 .Where(x =>
-                    x.Contains("tja2fumen", StringComparison.InvariantCultureIgnoreCase)
+                    x.Contains("tja2fumen")
                     && x.EndsWith(".exe", StringComparison.InvariantCultureIgnoreCase)).ToList();
 
             // if something is just called tja2fumen.exe use that
-            var foundFile = files.FirstOrDefault(x => x.Contains("tja2fumen.exe", StringComparison.InvariantCultureIgnoreCase));
+            var foundFile = files.FirstOrDefault(x => x.Contains("tja2fumen.exe"));
             if (!string.IsNullOrWhiteSpace(foundFile))
                 return foundFile;
 
