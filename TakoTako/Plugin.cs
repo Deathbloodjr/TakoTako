@@ -6,6 +6,12 @@ using BepInEx.Logging;
 using HarmonyLib;
 using TakoTako.Patches;
 using UnityEngine;
+using SaveProfileManager;
+
+using SaveProfileManager.Patches;
+using System.Reflection;
+using System.IO;
+
 #if TAIKO_IL2CPP
 using BepInEx.Unity.IL2CPP.Utils;
 using BepInEx.Unity.IL2CPP;
@@ -14,13 +20,15 @@ using BepInEx.Unity.IL2CPP;
 #pragma warning disable BepInEx002
 namespace TakoTako
 {
-    [BepInPlugin(PluginInfo.PLUGIN_GUID, PluginInfo.PLUGIN_NAME, PluginInfo.PLUGIN_VERSION)]
+    [BepInPlugin(MyPluginInfo.PLUGIN_GUID, MyPluginInfo.PLUGIN_NAME, MyPluginInfo.PLUGIN_VERSION)]
 #if TAIKO_MONO
     public class Plugin : BaseUnityPlugin
 #elif TAIKO_IL2CPP
     public class Plugin : BasePlugin
 #endif
     {
+        public const string ModName = "TakoTako";
+
         public ConfigEntry<bool> ConfigSkipSplashScreen;
         public ConfigEntry<bool> ConfigAutomaticallyStartGame;
         public ConfigEntry<bool> ConfigDisableScreenChangeOnFocus;
@@ -56,79 +64,85 @@ namespace TakoTako
             Log = base.Log;
 #endif
 
-            Log.LogInfo($"Plugin {PluginInfo.PLUGIN_GUID} is loaded!");
 
-            SetupConfig();
+            SetupConfig(Config, Path.Combine("BepInEx", "data", ModName));
             SetupHarmony();
+
+            var isSaveManagerLoaded = IsSaveManagerLoaded();
+            if (isSaveManagerLoaded)
+            {
+                AddToSaveManager();
+            }
         }
 
-        private void SetupConfig()
+        private void SetupConfig(ConfigFile config, string saveFolder, bool isSaveManager = false)
         {
-            var userFolder = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+            string dataFolder = Path.Combine("BepInEx", "data", ModName);
 
-            ConfigEnableCustomSongs = Config.Bind("CustomSongs",
+
+            ConfigEnableCustomSongs = config.Bind("CustomSongs",
                 "EnableCustomSongs",
                 true,
                 "When true this will load custom mods");
 
-            ConfigSongDirectory = Config.Bind("CustomSongs",
+            ConfigSongDirectory = config.Bind("CustomSongs",
                 "SongDirectory",
-                $"{userFolder}/Documents/{typeof(Plugin).Namespace}/customSongs",
+                $"{dataFolder}/customSongs",
                 "The directory where custom tracks are stored");
 
-            ConfigSaveEnabled = Config.Bind("CustomSongs",
+            ConfigSaveEnabled = config.Bind("CustomSongs",
                 "SaveEnabled",
                 true,
                 "Should there be local saves? Disable this if you want to wipe modded saves with every load");
 
-            ConfigSaveDirectory = Config.Bind("CustomSongs",
+            ConfigSaveDirectory = config.Bind("CustomSongs",
                 "SaveDirectory",
-                $"{userFolder}/Documents/{typeof(Plugin).Namespace}/saves",
+                $"{saveFolder}/saves",
                 "The directory where saves are stored");
 
-            ConfigOverrideDefaultSongLanguage = Config.Bind("CustomSongs",
+            ConfigOverrideDefaultSongLanguage = config.Bind("CustomSongs",
                 "ConfigOverrideDefaultSongLanguage",
                 string.Empty,
                 "Set this value to {Japanese, English, French, Italian, German, Spanish, ChineseTraditional, ChineseSimplified, Korean} " +
                 "to override all music tracks to a certain language, regardless of your applications language");
 
-            ConfigApplyGenreOverride = Config.Bind("CustomSongs",
+            ConfigApplyGenreOverride = config.Bind("CustomSongs",
                 "ConfigApplyGenreOverride",
                 true,
                 "Set this value to {01 Pop, 02 Anime, 03 Vocaloid, 04 Children and Folk, 05 Variety, 06 Classical, 07 Game Music, 08 Live Festival Mode, 08 Namco Original} " +
                 "to override all track's genre in a certain folder. This is useful for TJA files that do not have a genre");
 
-            ConfigFixSignInScreen = Config.Bind("General",
+            ConfigFixSignInScreen = config.Bind("General",
                 "FixSignInScreen",
                 false,
                 "When true this will apply the patch to fix signing into Xbox Live");
 
-            ConfigSkipSplashScreen = Config.Bind("General",
+            ConfigSkipSplashScreen = config.Bind("General",
                 "SkipSplashScreen",
                 true,
                 "When true this will skip the intro");
             
-            ConfigAutomaticallyStartGame = Config.Bind("General",
+            ConfigAutomaticallyStartGame = config.Bind("General",
                 "AutomaticallyStartGame",
                 false,
                 "When true this will continue on the main menu ");
             
-            ConfigSkipDLCCheck = Config.Bind("General",
+            ConfigSkipDLCCheck = config.Bind("General",
                 "SkipDLCCheck",
                 true,
                 "When true this will skip slow DLC checks");
 
-            ConfigDisableScreenChangeOnFocus = Config.Bind("General",
+            ConfigDisableScreenChangeOnFocus = config.Bind("General",
                 "DisableScreenChangeOnFocus",
                 false,
                 "When focusing this wont do anything jank, I thnk");
 
-            ConfigEnableTaikoDrumSupport = Config.Bind("Controller.TaikoDrum",
+            ConfigEnableTaikoDrumSupport = config.Bind("Controller.TaikoDrum",
                 "ConfigEnableTaikoDrumSupport",
                 true,
                 "This will enable support for Taiko drums, current tested with official Hori Drum");
 
-            ConfigTaikoDrumUseNintendoLayout = Config.Bind("Controller.TaikoDrum",
+            ConfigTaikoDrumUseNintendoLayout = config.Bind("Controller.TaikoDrum",
                 "ConfigTaikoDrumUseNintendoLayout",
                 false,
                 "This will use the Nintendo layout YX/BA for the Hori Taiko Drum");
@@ -137,32 +151,133 @@ namespace TakoTako
         private void SetupHarmony()
         {
             // Patch methods
-            _harmony = new Harmony(PluginInfo.PLUGIN_GUID);
+            _harmony = new Harmony(MyPluginInfo.PLUGIN_GUID);
 
-            if (ConfigSkipSplashScreen.Value)
-                _harmony.PatchAll(typeof(SkipSplashScreenPatch));
-            
-            if (ConfigAutomaticallyStartGame.Value)
-                _harmony.PatchAll(typeof(AutomaticallyStartGamePatch));
+            LoadPlugin(true);
+        }
 
-            if (ConfigFixSignInScreen.Value)
-                _harmony.PatchAll(typeof(SignInPatch));
-
-            if (ConfigDisableScreenChangeOnFocus.Value)
-                _harmony.PatchAll(typeof(DisableScreenChangeOnFocusPatch));
-
-            if (ConfigEnableTaikoDrumSupport.Value)
-                _harmony.PatchAll(typeof(TaikoDrumSupportPatch));
-
-            #if TAIKO_IL2CPP
-            if (ConfigSkipDLCCheck.Value)
-                _harmony.PatchAll(typeof(SkipDLCCheckPatch));
-            #endif
-    
-            if (ConfigEnableCustomSongs.Value)
+        public static void LoadPlugin(bool enabled)
+        {
+            if (enabled)
             {
-                _harmony.PatchAll(typeof(CustomMusicLoaderPatch));
-                CustomMusicLoaderPatch.Setup(_harmony);
+                bool result = true;
+                // If any PatchFile fails, result will become false
+                //result &= Instance.PatchFile(typeof(ExampleSingleHitBigNotesPatch));
+                //result &= Instance.PatchFile(typeof(ExampleSortByUraPatch));
+
+                if (Instance.ConfigSkipSplashScreen.Value)
+                    result &= Instance.PatchFile(typeof(SkipSplashScreenPatch));
+
+                if (Instance.ConfigAutomaticallyStartGame.Value)
+                    result &= Instance.PatchFile(typeof(AutomaticallyStartGamePatch));
+
+                if (Instance.ConfigFixSignInScreen.Value)
+                    result &= Instance.PatchFile(typeof(SignInPatch));
+
+                if (Instance.ConfigDisableScreenChangeOnFocus.Value)
+                    result &= Instance.PatchFile(typeof(DisableScreenChangeOnFocusPatch));
+
+                if (Instance.ConfigEnableTaikoDrumSupport.Value)
+                    result &= Instance.PatchFile(typeof(TaikoDrumSupportPatch));
+
+#if TAIKO_IL2CPP
+                if (ConfigSkipDLCCheck.Value)
+                    result &= Instance.PatchFile(typeof(SkipDLCCheckPatch));
+#endif
+
+                if (Instance.ConfigEnableCustomSongs.Value)
+                {
+                    result &= Instance.PatchFile(typeof(CustomMusicLoaderPatch));
+                    CustomMusicLoaderPatch.Setup();
+                }
+
+
+                if (result)
+                {
+                    ModLogger.Log($"Plugin {MyPluginInfo.PLUGIN_NAME} is loaded!");
+                }
+                else
+                {
+                    ModLogger.Log($"Plugin {MyPluginInfo.PLUGIN_GUID} failed to load.", LogType.Error);
+                    // Unload this instance of Harmony
+                    // I hope this works the way I think it does
+                    Instance._harmony.UnpatchSelf();
+                }
+            }
+            else
+            {
+                ModLogger.Log($"Plugin {MyPluginInfo.PLUGIN_NAME} is disabled.");
+            }
+        }
+
+        private bool PatchFile(Type type)
+        {
+            if (_harmony == null)
+            {
+                _harmony = new Harmony(MyPluginInfo.PLUGIN_GUID);
+            }
+            try
+            {
+                _harmony.PatchAll(type);
+                ModLogger.Log("File patched: " + type.FullName, LogType.Debug);
+                return true;
+            }
+            catch (Exception e)
+            {
+                ModLogger.Log("Failed to patch file: " + type.FullName);
+                ModLogger.Log(e.Message);
+                return false;
+            }
+        }
+
+        public static void UnloadPlugin()
+        {
+            CustomMusicLoaderPatch.UnloadCustomSongs();
+            CustomMusicLoaderPatch.UnloadSaveData();
+            Instance._harmony.UnpatchSelf();
+            ModLogger.Log($"Plugin {MyPluginInfo.PLUGIN_NAME} has been unpatched.");
+        }
+
+        public static void ReloadPlugin()
+        {
+            // Reloading will always be completely different per mod
+            // You'll want to reload any config file or save data that may be specific per profile
+            // If there's nothing to reload, don't put anything here, and keep it commented in AddToSaveManager
+
+            CustomMusicLoaderPatch.Setup();
+            CustomMusicLoaderPatch.ReloadCustomSongs();
+            CustomMusicLoaderPatch.ReloadSaveData();
+            ModLogger.Log($"Plugin {MyPluginInfo.PLUGIN_NAME} has been reloaded.");
+        }
+
+        public void AddToSaveManager()
+        {
+            // Add SaveDataManager dll path to your csproj.user file
+            // https://github.com/Deathbloodjr/TDMX.SaveProfileManager
+            var plugin = new PluginSaveDataInterface(MyPluginInfo.PLUGIN_GUID);
+            plugin.AssignLoadFunction(LoadPlugin);
+            plugin.AssignUnloadFunction(UnloadPlugin);
+
+            // Reloading will always be completely different per mod
+            // You'll want to reload any config file or save data that may be specific per profile
+            // If there's nothing to reload, don't put anything here, and keep it commented in AddToSaveManager
+            plugin.AssignReloadSaveFunction(ReloadPlugin);
+
+            // Uncomment this if there are more config options than just ConfigEnabled
+            plugin.AssignConfigSetupFunction(SetupConfig);
+            plugin.AddToManager(true);
+        }
+
+        private bool IsSaveManagerLoaded()
+        {
+            try
+            {
+                Assembly loadedAssembly = Assembly.Load("com.DB.TDMX.SaveProfileManager");
+                return loadedAssembly != null;
+            }
+            catch
+            {
+                return false;
             }
         }
 
@@ -170,11 +285,7 @@ namespace TakoTako
 
         public void StartCustomCoroutine(IEnumerator enumerator)
         {
-            #if TAIKO_MONO
             GetMonoBehaviour().StartCoroutine(enumerator);
-            #elif TAIKO_IL2CPP
-            GetMonoBehaviour().StartCoroutine(enumerator);
-            #endif
         }
     }
 }

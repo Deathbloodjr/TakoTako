@@ -39,7 +39,7 @@ public class CustomMusicLoaderPatch
 
     public static ManualLogSource Log => Plugin.Log;
 
-    public static void Setup(Harmony harmony)
+    public static void Setup()
     {
         CreateDirectoryIfNotExist(Path.GetDirectoryName(SaveFilePath));
         CreateDirectoryIfNotExist(MusicTrackDirectory);
@@ -58,6 +58,17 @@ public class CustomMusicLoaderPatch
     #region Custom Save Data
 
     private static CustomMusicSaveDataBody _customSaveData;
+
+    public static void UnloadSaveData()
+    {
+        _customSaveData = null;
+    }
+
+    public static void ReloadSaveData()
+    {
+        UnloadSaveData();
+        GetCustomSaveData();
+    }
 
     private static CustomMusicSaveDataBody GetCustomSaveData()
     {
@@ -142,6 +153,17 @@ public class CustomMusicLoaderPatch
     private static readonly ConcurrentDictionary<string, SongInstance> idToSong = new ConcurrentDictionary<string, SongInstance>();
     private static readonly ConcurrentDictionary<int, SongInstance> uniqueIdToSong = new ConcurrentDictionary<int, SongInstance>();
 
+    public static void UnloadCustomSongs()
+    {
+        customSongsList = null;
+    }
+    public static void ReloadCustomSongs()
+    {
+        UnloadCustomSongs();
+        // I guess you don't technically need to GetCustomSongs here
+        // But it'd probably be better to do it here than wait for when you need it next?
+        GetCustomSongs();
+    }
     public static ConcurrentBag<SongInstance> GetCustomSongs()
     {
         if (customSongsList != null)
@@ -202,7 +224,7 @@ public class CustomMusicLoaderPatch
                     try
                     {
                         var pathName = Path.GetFileName(musicDirectory);
-                        var pluginDirectory = @$"{Environment.CurrentDirectory}\BepInEx\plugins\{PluginInfo.PLUGIN_GUID}";
+                        var pluginDirectory = @$"{Environment.CurrentDirectory}\BepInEx\plugins\{MyPluginInfo.PLUGIN_GUID}";
                         
                         var tjaConvertPath = @$"{pluginDirectory}\TJAConvert.exe";
                         var tja2FumenConvertPath = GetTja2FumenPath();
@@ -334,7 +356,7 @@ public class CustomMusicLoaderPatch
         string GetTja2FumenPath()
         {
             // determine conversion program
-            var pluginDirectory = @$"{Environment.CurrentDirectory}\BepInEx\plugins\{PluginInfo.PLUGIN_GUID}";
+            var pluginDirectory = @$"{Environment.CurrentDirectory}\BepInEx\plugins\{MyPluginInfo.PLUGIN_GUID}";
             // var tjaConvertPath = @$"{pluginDirectory}\TJAConvert.exe";
             var files = Directory
                 .EnumerateFiles(pluginDirectory)
@@ -905,22 +927,27 @@ public class CustomMusicLoaderPatch
         {
             for (int j = 0; j < musicInfoAccess.Length; j++)
             {
-                bool flag = false;
-                playDataMgr.GetUnlockInfo(0, DataConst.ItemType.Music, musicInfoAccess[j].UniqueId, out var dst3);
-                if (!dst3.isUnlock && musicInfoAccess[j].Price != 0)
+
+                if (musicInfoAccess[j].GenreNo != i)
                 {
-                    flag = true;
+                    continue;
                 }
 
                 if (!enableKakuninSong && musicInfoAccess[j].IsKakuninSong())
                 {
-                    flag = true;
-                }
-
-                if (flag || musicInfoAccess[j].GenreNo != i)
-                {
                     continue;
                 }
+
+                if (musicInfoAccess[j].Price != 0)
+                {
+                    playDataMgr.GetUnlockInfo(0, DataConst.ItemType.Music, musicInfoAccess[j].UniqueId, out var dst3);
+                    if (!dst3.isUnlock && musicInfoAccess[j].Price != 0)
+                    {
+                        continue;
+                    }
+                }
+
+
 
                 SongSelectManager.Song song2 = new SongSelectManager.Song();
                 song2.PreviewIndex = j;
@@ -993,7 +1020,6 @@ public class CustomMusicLoaderPatch
                         song2.HighScores[k].hiScoreRecordInfos = dst4.normalHiScore;
                         song2.HighScores[k].crown = dst4.crown;
 #endif
-
                         GetPlayerRecordInfo(playDataMgr, 1, musicInfoAccess[j].UniqueId, (EnsoData.EnsoLevelType)k, out var dst5);
                         song2.NotPlayed2P[k] = dst5.playCount <= 0;
                         song2.NotCleared2P[k] = dst4.crown < DataConst.CrownType.Silver;
@@ -1276,6 +1302,7 @@ public class CustomMusicLoaderPatch
         return false;
     }
 
+    // This breaks GetUnlockInfo for Mono, idk about IL2CPP but I'd assume there as well?
     [HarmonyPatch(typeof(PlayDataManager), nameof(PlayDataManager.IsValueInRange))]
     [HarmonyPostfix]
     [HarmonyWrapSafe]
@@ -1289,15 +1316,38 @@ public class CustomMusicLoaderPatch
             __result = true;
     }
 
+#if TAIKO_MONO
+    [HarmonyPatch(typeof(PlayDataManager))]
+    [HarmonyPatch(nameof(PlayDataManager.GetUnlockInfo))]
+    [HarmonyPrefix]
+    [HarmonyWrapSafe]
+    private static bool PlayDataManager_GetUnlockInfo_Prefix(PlayDataManager __instance, int playerId, DataConst.ItemType itemType, int uniqueId, out UnlockInfo dst)
+    {
+        if (itemType != DataConst.ItemType.Music)
+        {
+            dst = new UnlockInfo();
+            return true;
+        }
+
+        // Temporary to let it build
+        dst = new UnlockInfo();
+        return true;
+    }
+#endif
+
     #region Methods with GetPlayerRecordInfo
 
     // this doesn't patch well, so I have to redo each method that uses it
+    // We can still patch it for Mono though, and a lot of mods use this function
+    // So this means the function is unusable for any mods in IL2CPP until we can patch it properly there
     // /// <summary>
     // /// Load scores from custom save data
     // /// </summary>
-    // [HarmonyPatch(typeof(PlayDataManager), nameof(PlayDataManager.GetPlayerRecordInfo))]
-    // [HarmonyPrefix]
-    public static void GetPlayerRecordInfo(PlayDataManager __instance,
+#if TAIKO_MONO
+    [HarmonyPatch(typeof(PlayDataManager), nameof(PlayDataManager.GetPlayerRecordInfo))]
+    [HarmonyPrefix]
+#endif
+    public static bool GetPlayerRecordInfo(PlayDataManager __instance,
         int playerId,
         int uniqueId,
         EnsoData.EnsoLevelType levelType,
@@ -1305,8 +1355,12 @@ public class CustomMusicLoaderPatch
     {
         if (!uniqueIdToSong.ContainsKey(uniqueId))
         {
+#if TAIKO_MONO
+            dst = new EnsoRecordInfo();
+#elif TAIKO_IL2CPP
             __instance.GetPlayerRecordInfo(playerId, uniqueId, levelType, out dst);
-            return;
+#endif
+            return true;
         }
 
         int num = (int)levelType;
@@ -1322,6 +1376,7 @@ public class CustomMusicLoaderPatch
         }
 
         dst = ensoData[num];
+        return false;
     }
 
     [HarmonyPatch(typeof(CourseSelect), nameof(CourseSelect.SetInfo))]
@@ -1474,7 +1529,7 @@ public class CustomMusicLoaderPatch
         }
     }
 
-    #endregion
+#endregion
 
     /// <summary>
     /// Save scores to custom save data
@@ -1673,7 +1728,7 @@ public class CustomMusicLoaderPatch
 #pragma warning restore Harmony003
     }
 
-    #endregion
+#endregion
 
     #region Read Fumen
 
