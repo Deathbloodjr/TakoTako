@@ -11,6 +11,7 @@ using SaveProfileManager;
 using SaveProfileManager.Patches;
 using System.Reflection;
 using System.IO;
+using TakoTako.Patches.CustomMusicLoader;
 
 #if TAIKO_IL2CPP
 using BepInEx.Unity.IL2CPP.Utils;
@@ -244,9 +245,7 @@ namespace TakoTako
             // You'll want to reload any config file or save data that may be specific per profile
             // If there's nothing to reload, don't put anything here, and keep it commented in AddToSaveManager
 
-            CustomMusicLoaderPatch.Setup();
-            CustomMusicLoaderPatch.ReloadCustomSongs();
-            CustomMusicLoaderPatch.ReloadSaveData();
+            CustomMusicLoaderPatch.Reload();
             ModLogger.Log($"Plugin {MyPluginInfo.PLUGIN_NAME} has been reloaded.");
         }
 
