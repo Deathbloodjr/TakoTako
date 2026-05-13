@@ -1,4 +1,5 @@
-﻿using Newtonsoft.Json;
+﻿using BepInEx.Logging;
+using Newtonsoft.Json;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
@@ -361,7 +362,9 @@ namespace TakoTako.Patches.CustomMusicLoader
                 customSongsList.Add(song);
                 idToSong[song.id] = song;
                 uniqueIdToSong[song.UniqueId] = song;
-                Log.LogInfo($"Added{(isTjaSong ? " TJA" : "")} Song {song.songName.text}({song.UniqueId})");
+                // This spam doesn't need to be done on startup every time
+                // We just need to know if songs failed to be added, not that all 2000+ were added
+                ModLogger.Log($"Added{(isTjaSong ? " TJA" : "")} Song {song.songName.text}({song.UniqueId})", LogType.Debug);
             }
         }
 
