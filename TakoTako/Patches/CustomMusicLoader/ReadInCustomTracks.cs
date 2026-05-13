@@ -244,9 +244,9 @@ namespace TakoTako.Patches.CustomMusicLoader
                             musicInfoAccessors.RemoveAt(j);
                     }
 
-                    var songValues = GetValuesWordList(songEntry);
-                    var subtitleValues = GetValuesWordList(songEntry);
-                    var detailValues = GetValuesWordList(songEntry);
+                    var songValues = GetValuesWordList(songEntry, languageValue);
+                    var subtitleValues = GetValuesWordList(songEntry, languageValue);
+                    var detailValues = GetValuesWordList(songEntry, languageValue == "Japanese" ? "English" : languageValue);
 
                     musicInfoAccessors.Insert(0, new WordDataInterface.WordListInfoAccesser(songKey, songValues.text, songValues.font));
                     musicInfoAccessors.Insert(0, new WordDataInterface.WordListInfoAccesser(subtitleKey, subtitleValues.text, subtitleValues.font));
@@ -258,6 +258,10 @@ namespace TakoTako.Patches.CustomMusicLoader
             {
                 Add($"song_{customTrack.id}", customTrack.songName);
                 Add($"song_sub_{customTrack.id}", customTrack.songSubtitle);
+                if (customTrack.songName.text != customTrack.songName.enText)
+                {
+                    customTrack.songDetail.text = customTrack.songName.enText;
+                }
                 Add($"song_detail_{customTrack.id}", customTrack.songDetail);
 
                 void Add(string key, TextEntry textEntry)
@@ -271,11 +275,11 @@ namespace TakoTako.Patches.CustomMusicLoader
 
             return wordDataInterface;
 
-            (string text, int font) GetValuesWordList(WordListInfo wordListInfo)
+            (string text, int font) GetValuesWordList(WordListInfo wordListInfo, string language)
             {
                 string text;
                 int font;
-                switch (languageValue)
+                switch (language)
                 {
                     case "Japanese":
                         text = wordListInfo.jpText;

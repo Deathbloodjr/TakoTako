@@ -40,6 +40,9 @@
     </ItemGroup>
 
     <ItemGroup>
+        <Reference Include="ChartConverterLib">
+          <HintPath>References\ChartConverterLib.dll</HintPath>
+        </Reference>
         <Reference Include="SonicAudioLib, Version=1.0.11.0, Culture=neutral, PublicKeyToken=null">
             <HintPath>References\SonicAudioLib.dll</HintPath>
         </Reference>

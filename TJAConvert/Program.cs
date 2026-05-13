@@ -111,13 +111,22 @@ namespace TJAConvert
                     var originalTjaData = File.ReadAllBytes(tjaPath);
                     var tjaHash = (int) (MurmurHash2.Hash(originalTjaData) & 0xFFFF_FFF);
 
+                    ChartConverterLib.TJA tja = new ChartConverterLib.TJA();
+
+                    var chart = tja.ReadTJA(tjaPath, (ChartConverterLib.ChartData.Difficulty)metadata.Courses[0].CourseType);
+                    var baseAudioDelay = 240000 / chart.Measures[0].BPM;
+
                     var passed = await TJAToFumens(metadata, tjaPath, tjaHash, tempOutDirectory);
-                    if (passed >= 0) passed = CreateMusicFile(metadata, tjaHash, tempOutDirectory) ? 0 : -1;
+                    if (passed >= 0) passed = CreateMusicFile(metadata, tjaPath, tjaHash, tempOutDirectory) ? 0 : -1;
 
                     var copyFilePath = Path.Combine(newDirectory, Path.GetFileName(originalAudioPath));
                     File.Copy(originalAudioPath, copyFilePath);
 
-                    int millisecondsAddedSilence = metadata.Offset > TjaOffsetForPaddingSong ? PaddedSongTime : 0;
+                    int millisecondsAddedSilence = 0;
+                    if (baseAudioDelay > chart.Offset)
+                    {
+                        millisecondsAddedSilence = (int)(baseAudioDelay - chart.Offset);
+                    }
 
                     var audioExtension = Path.GetExtension(copyFilePath).TrimStart('.');
                     switch (audioExtension.ToLowerInvariant())
@@ -209,7 +218,7 @@ namespace TJAConvert
             acbFile.Save(acbPath, bufferSize);
         }
 
-        private static bool CreateMusicFile(TJAMetadata metadata, int tjaHash, string outputPath)
+        private static bool CreateMusicFile(TJAMetadata metadata, string tjaPath, int tjaHash, string outputPath)
         {
             try
             {
@@ -279,53 +288,84 @@ namespace TJAConvert
                     var isDouble = course.PlayStyle == TJAMetadata.PlayStyle.Double;
                     var shinuti = EstimateScoreBasedOnNotes(course);
 
+                    ChartConverterLib.TJA tja = new ChartConverterLib.TJA();
+                    ChartConverterLib.ChartData.Difficulty converterDifficulty;
+                    switch (course.CourseType)
+                    {
+                        case CourseType.Easy:
+                            converterDifficulty = ChartConverterLib.ChartData.Difficulty.Easy;
+                            break;
+                        case CourseType.Normal:
+                            converterDifficulty = ChartConverterLib.ChartData.Difficulty.Normal;
+                            break;
+                        case CourseType.Hard:
+                            converterDifficulty = ChartConverterLib.ChartData.Difficulty.Hard;
+                            break;
+                        case CourseType.Oni:
+                            converterDifficulty = ChartConverterLib.ChartData.Difficulty.Oni;
+                            break;
+                        case CourseType.UraOni:
+                            converterDifficulty = ChartConverterLib.ChartData.Difficulty.Ura;
+                            break;
+                        default:
+                            converterDifficulty = ChartConverterLib.ChartData.Difficulty.Oni;
+                            break;
+                    }
+                    var chart = tja.ReadTJA(tjaPath, converterDifficulty);
+                    int points = shinuti;
+                    int score = 1000000;
+                    if (chart != null)
+                    {
+                        (points, score) = chart.GetPointsAndScore();
+                    }
+
                     //todo figure out the best score?
                     switch (course.CourseType)
                     {
                         case CourseType.Easy:
                             musicInfo.starEasy = course.Level;
-                            musicInfo.scoreEasy = 1000000;
+                            musicInfo.scoreEasy = score;
                             musicInfo.branchEasy = musicInfo.branchEasy || course.IsBranching;
                             if (isDouble)
-                                musicInfo.shinutiEasyDuet = shinuti;
+                                musicInfo.shinutiEasyDuet = points;
                             else
-                                musicInfo.shinutiEasy = shinuti;
+                                musicInfo.shinutiEasy = points;
                             break;
                         case CourseType.Normal:
                             musicInfo.starNormal = course.Level;
-                            musicInfo.scoreNormal = 1000000;
+                            musicInfo.scoreNormal = score;
                             musicInfo.branchNormal = musicInfo.branchNormal || course.IsBranching;
                             if (isDouble)
-                                musicInfo.shinutiNormalDuet = shinuti;
+                                musicInfo.shinutiNormalDuet = points;
                             else
-                                musicInfo.shinutiNormal = shinuti;
+                                musicInfo.shinutiNormal = points;
                             break;
                         case CourseType.Hard:
                             musicInfo.starHard = course.Level;
-                            musicInfo.scoreHard = 1000000;
+                            musicInfo.scoreHard = score;
                             musicInfo.branchHard = musicInfo.branchHard || course.IsBranching;
                             if (isDouble)
-                                musicInfo.shinutiHardDuet = shinuti;
+                                musicInfo.shinutiHardDuet = points;
                             else
-                                musicInfo.shinutiHard = shinuti;
+                                musicInfo.shinutiHard = points;
                             break;
                         case CourseType.Oni:
                             musicInfo.starMania = course.Level;
-                            musicInfo.scoreMania = 1000000;
+                            musicInfo.scoreMania = score;
                             musicInfo.branchMania = musicInfo.branchMania || course.IsBranching;
                             if (isDouble)
-                                musicInfo.shinutiManiaDuet = shinuti;
+                                musicInfo.shinutiManiaDuet = points;
                             else
-                                musicInfo.shinutiMania = shinuti;
+                                musicInfo.shinutiMania = points;
                             break;
                         case CourseType.UraOni:
                             musicInfo.starUra = course.Level;
-                            musicInfo.scoreUra = 1000000;
+                            musicInfo.scoreUra = score;
                             musicInfo.branchUra = musicInfo.branchUra || course.IsBranching;
                             if (isDouble)
-                                musicInfo.shinutiUraDuet = shinuti;
+                                musicInfo.shinutiUraDuet = points;
                             else
-                                musicInfo.shinutiUra = shinuti;
+                                musicInfo.shinutiUra = points;
                             break;
                         default:
                             throw new ArgumentOutOfRangeException();
@@ -650,6 +690,84 @@ namespace TJAConvert
             var lines = ApplyGeneralFixes(File.ReadAllLines(tjaPath, encoding).ToList());
             File.WriteAllLines(newPath, lines);
 
+            ChartConverterLib.TJA tja = new ChartConverterLib.TJA();
+            ChartConverterLib.Fumen fumen = new ChartConverterLib.Fumen();
+
+            for (int i = 0; i < metadata.Courses.Count; i++)
+            {
+                ChartConverterLib.ChartData.Chart chart = new ChartConverterLib.ChartData.Chart();
+                switch (metadata.Courses[i].CourseType)
+                {
+                    case CourseType.Easy:
+                        chart = tja.ReadTJA(tjaPath, ChartConverterLib.ChartData.Difficulty.Easy);
+                        var baseAudioDelay = 240000 / chart.Measures[0].BPM;
+                        if (baseAudioDelay > chart.Offset)
+                        {
+                            chart.Offset = 0;
+                        }
+                        else
+                        {
+                            chart.Offset -= baseAudioDelay;
+                        }
+                        fumen.WriteFumen(Path.Combine(outputPath, fileName + "_e.bin"), chart);
+                        break;
+                    case CourseType.Normal:
+                        chart = tja.ReadTJA(tjaPath, ChartConverterLib.ChartData.Difficulty.Normal);
+                        baseAudioDelay = 240000 / chart.Measures[0].BPM;
+                        if (baseAudioDelay > chart.Offset)
+                        {
+                            chart.Offset = 0;
+                        }
+                        else
+                        {
+                            chart.Offset -= baseAudioDelay;
+                        }
+                        fumen.WriteFumen(Path.Combine(outputPath, fileName + "_n.bin"), chart);
+                        break;
+                    case CourseType.Hard:
+                        chart = tja.ReadTJA(tjaPath, ChartConverterLib.ChartData.Difficulty.Hard);
+                        baseAudioDelay = 240000 / chart.Measures[0].BPM;
+                        if (baseAudioDelay > chart.Offset)
+                        {
+                            chart.Offset = 0;
+                        }
+                        else
+                        {
+                            chart.Offset -= baseAudioDelay;
+                        }
+                        fumen.WriteFumen(Path.Combine(outputPath, fileName + "_h.bin"), chart);
+                        break;
+                    case CourseType.Oni:
+                        chart = tja.ReadTJA(tjaPath, ChartConverterLib.ChartData.Difficulty.Oni);
+                        baseAudioDelay = 240000 / chart.Measures[0].BPM;
+                        if (baseAudioDelay > chart.Offset)
+                        {
+                            chart.Offset = 0;
+                        }
+                        else
+                        {
+                            chart.Offset -= baseAudioDelay;
+                        }
+                        fumen.WriteFumen(Path.Combine(outputPath, fileName + "_m.bin"), chart);
+                        break;
+                    case CourseType.UraOni:
+                        chart = tja.ReadTJA(tjaPath, ChartConverterLib.ChartData.Difficulty.Ura);
+                        baseAudioDelay = 240000 / chart.Measures[0].BPM;
+                        if (baseAudioDelay > chart.Offset)
+                        {
+                            chart.Offset = 0;
+                        }
+                        else
+                        {
+                            chart.Offset -= baseAudioDelay;
+                        }
+                        fumen.WriteFumen(Path.Combine(outputPath, fileName + "_x.bin"), chart);
+                        break;
+                    default:
+                        break;
+                }
+            }
+
             var currentDirectory = Environment.CurrentDirectory;
             var exePath = $"{currentDirectory}/tja2bin.exe";
             if (!File.Exists(exePath))
@@ -660,97 +778,99 @@ namespace TJAConvert
 
             var timeStamp = Guid.NewGuid().ToString();
             bool isUsingTempFilePath = false;
-            try
-            {
-                int attempts = 30;
-                string result = string.Empty;
+            //try
+            //{
+            //    int attempts = 30;
+            //    string result = string.Empty;
 
-                do
-                {
-                    ProcessStartInfo info = new ProcessStartInfo()
-                    {
-                        FileName = exePath,
-                        Arguments = $"\"{newPath}\"",
-                        CreateNoWindow = true,
-                        WindowStyle = ProcessWindowStyle.Hidden,
-                        UseShellExecute = false,
-                        RedirectStandardOutput = true,
-                    };
+            //    do
+            //    {
+            //        ProcessStartInfo info = new ProcessStartInfo()
+            //        {
+            //            FileName = exePath,
+            //            Arguments = $"\"{newPath}\"",
+            //            CreateNoWindow = true,
+            //            WindowStyle = ProcessWindowStyle.Hidden,
+            //            UseShellExecute = false,
+            //            RedirectStandardOutput = true,
+            //        };
 
-                    var process = new Process();
-                    process.StartInfo = info;
+            //        var process = new Process();
+            //        process.StartInfo = info;
 
-                    CancellationTokenSource cancellationTokenSource = new CancellationTokenSource();
-                    var delayTask = Task.Delay(TimeSpan.FromSeconds(10), cancellationTokenSource.Token);
-                    var runTask = RunProcess();
+            //        CancellationTokenSource cancellationTokenSource = new CancellationTokenSource();
+            //        var delayTask = Task.Delay(TimeSpan.FromSeconds(10), cancellationTokenSource.Token);
+            //        var runTask = RunProcess();
 
-                    var taskResult = await Task.WhenAny(delayTask, runTask);
-                    if (taskResult == delayTask)
-                    {
-                        // tja2bin can sometimes have memory leak
-                        if (!process.HasExited)
-                        {
-                            process.Kill();
-                            return -3;
-                        }
-                    }
+            //        var taskResult = await Task.WhenAny(delayTask, runTask);
+            //        if (taskResult == delayTask)
+            //        {
+            //            // tja2bin can sometimes have memory leak
+            //            if (!process.HasExited)
+            //            {
+            //                process.Kill();
+            //                return -3;
+            //            }
+            //        }
 
-                    attempts--;
+            //        attempts--;
 
-                    // todo: Not sure how to solve this, so ignore it for now
-                    if (result.Contains("branches must have same measure count"))
-                    {
-                        Console.WriteLine("TJA is invalid, branches do not have same measure count.");
-                        return -2;
-                    }
+            //        // todo: Not sure how to solve this, so ignore it for now
+            //        if (result.Contains("branches must have same measure count"))
+            //        {
+            //            Console.WriteLine("TJA is invalid, branches do not have same measure count.");
+            //            return -2;
+            //        }
 
-                    //Provide useful output when the metadata is bad
-                    if (result.Contains("invalid metadata"))
-                    {
-                        Console.WriteLine(result);
-                        return -2;
-                    }
-                    //output any lines where there are warnings to aid with troubleshooting.
-                    if (result.Contains("warning"))
-                    {
-                        Console.WriteLine(Regex.Match(result, "warning:.*"));
-                    }
+            //        //Provide useful output when the metadata is bad
+            //        if (result.Contains("invalid metadata"))
+            //        {
+            //            Console.WriteLine(result);
+            //            return -2;
+            //        }
+            //        //output any lines where there are warnings to aid with troubleshooting.
+            //        if (result.Contains("warning"))
+            //        {
+            //            Console.WriteLine(Regex.Match(result, "warning:.*"));
+            //        }
 
 
-                    async Task RunProcess()
-                    {
-                        process.Start();
-                        result = await process.StandardOutput.ReadToEndAsync();
-                    }
-                } while (FailedAndCanRetry(result) && attempts > 0);
+            //        async Task RunProcess()
+            //        {
+            //            process.Start();
+            //            result = await process.StandardOutput.ReadToEndAsync();
+            //        }
+            //    } while (FailedAndCanRetry(result) && attempts > 0);
 
-                if (isUsingTempFilePath)
-                {
-                    foreach (var file in Directory.EnumerateFiles(Path.GetDirectoryName(newPath)))
-                    {
-                        var tempFileName = Path.GetFileName(file);
-                        var newName = $"{outputPath}\\{tempFileName}".Replace(timeStamp.ToString(), fileName);
-                        if (File.Exists(newName))
-                            File.Delete(newName);
-                        File.Move(file, newName);
-                    }
+            //    if (isUsingTempFilePath)
+            //    {
+            //        foreach (var file in Directory.EnumerateFiles(Path.GetDirectoryName(newPath)))
+            //        {
+            //            var tempFileName = Path.GetFileName(file);
+            //            var newName = $"{outputPath}\\{tempFileName}".Replace(timeStamp.ToString(), fileName);
+            //            if (File.Exists(newName))
+            //                File.Delete(newName);
+            //            File.Move(file, newName);
+            //        }
 
-                    Directory.Delete(Path.GetDirectoryName(newPath));
-                    if (File.Exists($"{outputPath}\\{fileName}.tja"))
-                        File.Delete($"{outputPath}\\{fileName}.tja");
-                }
-                else
-                {
-                    File.Delete(newPath);
-                }
+            //        Directory.Delete(Path.GetDirectoryName(newPath));
+            //        if (File.Exists($"{outputPath}\\{fileName}.tja"))
+            //            File.Delete($"{outputPath}\\{fileName}.tja");
+            //    }
+            //    else
+            //    {
+            //        File.Delete(newPath);
+            //    }
 
-                return 0;
-            }
-            catch (Exception e)
-            {
-                Console.WriteLine(e);
-                return -1;
-            }
+            //    return 0;
+            //}
+            //catch (Exception e)
+            //{
+            //    Console.WriteLine(e);
+            //    return -1;
+            //}
+
+            return 0;
 
             List<string> ApplyGeneralFixes(List<string> lines)
             {
