@@ -364,7 +364,7 @@ namespace TakoTako.Patches.CustomMusicLoader
                 uniqueIdToSong[song.UniqueId] = song;
                 // This spam doesn't need to be done on startup every time
                 // We just need to know if songs failed to be added, not that all 2000+ were added
-                ModLogger.Log($"Added{(isTjaSong ? " TJA" : "")} Song {song.songName.text}({song.UniqueId})", LogType.Debug);
+                //ModLogger.Log($"Added{(isTjaSong ? " TJA" : "")} Song {song.songName.text}({song.UniqueId})", LogType.Debug);
             }
         }
 
