@@ -1,5 +1,6 @@
 ﻿using HarmonyLib;
 using PlayFab.Internal;
+using SaveProfileManager.Patches;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -20,10 +21,13 @@ namespace TakoTako.Patches.CustomMusicLoader
         [HarmonyWrapSafe]
         private static void DataManager_PostFix(DataManager __instance)
         {
-            if (__instance.MusicData != null)
+            if (!Plugin.SaveManagerLoaded)
             {
-                MusicDataInterface_Postfix(__instance.MusicData);
-                SongDataInterface_Postfix(__instance.SongData);
+                if (__instance.MusicData != null)
+                {
+                    MusicDataInterface_Postfix(__instance.MusicData);
+                    SongDataInterface_Postfix(__instance.SongData);
+                }
             }
         }
 
@@ -33,15 +37,44 @@ namespace TakoTako.Patches.CustomMusicLoader
         [HarmonyWrapSafe]
         private static bool ExchangeWordData_Prefix(DataManager __instance, string language)
         {
+            // This function must be overwritten, or it will override our custom song word data
             curLanguage = language;
             if (__instance.MusicData != null)
             {
-                __instance.WordData = CreateWordDateInterface(language);
+                __instance.WordData = CreateWordDataInterface(language);
                 return false;
             }
+                
+            return true;
+        }
+
+        static bool hasEnteredTitleScreen = false;
+
+        [HarmonyPatch(typeof(GameTitleManager))]
+        [HarmonyPatch(nameof(GameTitleManager.Start))]
+        [HarmonyPatch(MethodType.Normal)]
+        [HarmonyPrefix]
+        public static bool GameTitleManager_Start_Prefix(GameTitleManager __instance)
+        {
+            hasEnteredTitleScreen = true;
 
             return true;
         }
+
+        [HarmonyPatch(typeof(SongSelectManager))]
+        [HarmonyPatch(nameof(SongSelectManager.Start))]
+        [HarmonyPatch(MethodType.Normal)]
+        [HarmonyPrefix]
+        private static void SongSelectManager_Start_Prefix(SongSelectManager __instance)
+        {
+            if (hasEnteredTitleScreen &&
+                PreviousMusicTrackDirectory != MusicTrackDirectory)
+            {
+                ReadInCustomSongs();
+            }
+            hasEnteredTitleScreen = false;
+        }
+
 
         public static void ReadInCustomSongs()
         {
@@ -52,7 +85,11 @@ namespace TakoTako.Patches.CustomMusicLoader
             {
                 MusicDataInterface_Postfix(dataManager.MusicData);
                 SongDataInterface_Postfix(dataManager.SongData);
-                dataManager.WordData = CreateWordDateInterface(curLanguage);
+                dataManager.WordData = CreateWordDataInterface(curLanguage);
+            }
+            else
+            {
+                ModLogger.Log("Failed to add custom data to MusicData", LogType.Error);
             }
         }
 
@@ -68,7 +105,9 @@ namespace TakoTako.Patches.CustomMusicLoader
 
                 var customSongs = GetCustomSongs();
                 if (customSongs.Count == 0)
+                {
                     return;
+                }
 
                 // now that we have loaded this json, inject it into the existing `musicInfoAccessers`
                 var musicInfoAccessors = __instance.musicInfoAccessers;
@@ -183,10 +222,15 @@ namespace TakoTako.Patches.CustomMusicLoader
         /// <summary>
         /// This will handle loading the localisation of tracks
         /// </summary>
-        private static WordDataInterface CreateWordDateInterface(string language)
+        private static WordDataInterface CreateWordDataInterface(string language)
         {
             var wordDataInterface = new WordDataInterface(Application.streamingAssetsPath + "/ReadAssets/newwordlist.bin", language);
             // This is where the metadata for tracks are read in our attempt to allow custom tracks will be to add additional metadata to the list that is created
+            // I don't want to calculate customSongsList at this point
+            if (customSongsList == null)
+            {
+                return wordDataInterface;
+            }
             var customSongs = GetCustomSongs();
 
             if (customSongs.Count == 0)
@@ -245,8 +289,14 @@ namespace TakoTako.Patches.CustomMusicLoader
                     }
 
                     var songValues = GetValuesWordList(songEntry, languageValue);
-                    var subtitleValues = GetValuesWordList(songEntry, languageValue);
+                    var subtitleValues = GetValuesWordList(subtitleEntry, languageValue);
                     var detailValues = GetValuesWordList(songEntry, languageValue == "Japanese" ? "English" : languageValue);
+
+
+                    if (detailValues.text == songValues.text)
+                    {
+                        detailValues.text = string.Empty;
+                    }
 
                     musicInfoAccessors.Insert(0, new WordDataInterface.WordListInfoAccesser(songKey, songValues.text, songValues.font));
                     musicInfoAccessors.Insert(0, new WordDataInterface.WordListInfoAccesser(subtitleKey, subtitleValues.text, subtitleValues.font));

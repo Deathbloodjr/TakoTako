@@ -49,6 +49,8 @@ namespace TakoTako
         private Harmony _harmony;
         public new static ManualLogSource Log;
 
+        public static bool SaveManagerLoaded = false;
+
         // private ModMonoBehaviourHelper _modMonoBehaviourHelper;
 
 #if TAIKO_MONO
@@ -69,8 +71,8 @@ namespace TakoTako
             SetupConfig(Config, Path.Combine("BepInEx", "data", ModName));
             SetupHarmony();
 
-            var isSaveManagerLoaded = IsSaveManagerLoaded();
-            if (isSaveManagerLoaded)
+            SaveManagerLoaded = IsSaveManagerLoaded();
+            if (SaveManagerLoaded)
             {
                 AddToSaveManager();
             }

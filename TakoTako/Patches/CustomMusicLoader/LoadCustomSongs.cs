@@ -24,8 +24,7 @@ namespace TakoTako.Patches.CustomMusicLoader
 
         public static void UnloadCustomSongs()
         {
-            // It isn't this simple
-            // We also need to remove the songs from MusicInfo
+            // We need to remove the songs from MusicInfo
             var musicData = TaikoSingletonMonoBehaviour<CommonObjects>.Instance.MyDataManager.MusicData;
 
             for (int i = 0; i < musicData.musicInfoAccessers.Count; i++)
@@ -42,21 +41,20 @@ namespace TakoTako.Patches.CustomMusicLoader
             }
 
             customSongsList = null;
+            PreviousMusicTrackDirectory = "";
         }
         public static void ReloadCustomSongs()
         {
             UnloadCustomSongs();
 
             ReadInCustomSongs();
-
-            // I guess you don't technically need to GetCustomSongs here
-            // But it'd probably be better to do it here than wait for when you need it next?
-            GetCustomSongs();
         }
         public static ConcurrentBag<SongInstance> GetCustomSongs()
         {
             if (customSongsList != null)
+            {
                 return customSongsList;
+            }
 
             customSongsList = new ConcurrentBag<SongInstance>();
             if (!Directory.Exists(MusicTrackDirectory))
@@ -358,7 +356,7 @@ namespace TakoTako.Patches.CustomMusicLoader
                     throw new Exception($"Song \"{song.id}\" has collision with \"{uniqueIdToSong[song.UniqueId].id}\", bailing out...");
                 }
 
-                song.id += $"_custom_{song.UniqueId}";
+                //song.id += $"_custom_{song.UniqueId}";
                 customSongsList.Add(song);
                 idToSong[song.id] = song;
                 uniqueIdToSong[song.UniqueId] = song;

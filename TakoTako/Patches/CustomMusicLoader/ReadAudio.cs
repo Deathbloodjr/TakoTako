@@ -16,7 +16,7 @@ namespace TakoTako.Patches.CustomMusicLoader
 
         #region Read Song
 
-        private static readonly Regex sheetNameRegex = new Regex("^song_(?<songName>.*?_custom_\\d*?)$");
+        private static readonly Regex sheetNameRegex = new Regex("^song_(?<songName>.*?)$");
         private static readonly Regex songFilePathRegex = new Regex("sound\\/(?<sheetName>.*?)\\.bin$");
 
 
@@ -25,23 +25,21 @@ namespace TakoTako.Patches.CustomMusicLoader
         [HarmonyWrapSafe]
         public static bool ReadAllAesBytesAsyncInternal_Prefix(string path, Cryptgraphy.AesKeyType type, Cryptgraphy.Request request)
         {
-            var pathMatch = songFilePathRegex.Match(path);
-            if (!pathMatch.Success)
-                return true;
-
-            var sheetName = pathMatch.Groups["sheetName"].Value;
-            var sheetNameMatch = sheetNameRegex.Match(sheetName);
-            if (!sheetNameMatch.Success)
-                return true;
-
-            var songName = sheetNameMatch.Groups["songName"].Value;
-            if (!idToSong.TryGetValue(songName, out var songInstance))
+            if (File.Exists(path))
             {
-                Log.LogError($"Cannot find song : {songName}");
                 return true;
             }
 
-            var newPath = Path.Combine(songInstance.FolderPath, $"{sheetName.Replace(songName, songInstance.SongName)}.bin");
+            // Otherwise, custom song loading
+            string songId = Path.GetFileName(path).Replace(".bin", "").Replace("song_", "");
+
+            if (!idToSong.TryGetValue(songId, out var songInstance))
+            {
+                Log.LogError($"Cannot find song : {songId}");
+                return true;
+            }
+
+            var newPath = Path.Combine(songInstance.FolderPath, $"song_{songId}.bin");
 
             var bytes = File.ReadAllBytes(newPath);
             if (songInstance.areFilesGZipped)

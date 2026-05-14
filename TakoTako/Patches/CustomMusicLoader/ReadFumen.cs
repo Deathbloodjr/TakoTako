@@ -15,7 +15,7 @@ namespace TakoTako.Patches.CustomMusicLoader
 
         #region Read Fumen
 
-        private static readonly Regex fumenFilePathRegex = new Regex("(?<songID>.*?_custom_\\d*?)_(?<difficulty>[ehmnx])(_(?<songIndex>[12]))?.bin");
+        private static readonly Regex fumenFilePathRegex = new Regex("(?<songID>.*?)_(?<difficulty>[ehmnx])(_(?<songIndex>[12]))?.bin");
         private static readonly System.Collections.Generic.Dictionary<string, byte[]> pathToData = new System.Collections.Generic.Dictionary<string, byte[]>();
 
         [HarmonyPatch(typeof(Cryptgraphy), nameof(Cryptgraphy.ReadAllAesAndGZipBytes))]
