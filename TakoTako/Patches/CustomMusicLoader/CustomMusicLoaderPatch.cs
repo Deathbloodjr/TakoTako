@@ -58,12 +58,12 @@ public partial class CustomMusicLoaderPatch
 
     public static void Reload()
     {
+        Setup();
         if (Path.GetFullPath(MusicTrackDirectory) != PreviousMusicTrackDirectory)
         {
-            Setup();
             ReloadCustomSongs();
-            ReloadSaveData();
         }
+        ReloadSaveData();
     }
 
    
